@@ -8,27 +8,12 @@ import Terrain from './Terrain';
 import Camera from './Camera';
 import Controls from './Controls';
 
-// Post-processing pour améliorer le rendu visuel
-import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
-import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
-import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
-import { SSAOPass } from 'three/examples/jsm/postprocessing/SSAOPass.js';
-import { BokehPass } from 'three/examples/jsm/postprocessing/BokehPass.js';
-import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader.js';
-
-// Import des shaders pour l'effet cartoon
+// Post-processing
 import { OutlineEffect } from 'three/examples/jsm/effects/OutlineEffect.js';
-import {
-  ToonShader1,
-  ToonShader2,
-  ToonShaderHatching,
-  ToonShaderDotted,
-} from 'three/examples/jsm/shaders/ToonShader.js';
 
 // Constantes pour les paramètres de debug et physique
 const DEBUG = {
-  SHOW_PHYSICS: false, // Désactivé pour ne plus afficher les formes physiques
+  SHOW_PHYSICS: false,
   WIREFRAME: false,
   SHOW_FPS: true,
   CARTOON_STYLE: true, // Activer le style cartoon
@@ -64,7 +49,15 @@ export default class Game {
       maxSpeed: 0, // Vitesse maximale atteinte en km/h
       startPosition: 0, // Position de départ
       lastPosition: 0, // Dernière position connue
+      score: 0, // Score du joueur
+      jumps: 0, // Nombre de sauts
+      jumpBonus: 0, // Bonus de points des sauts (1pt par 0.1s en l'air)
     };
+
+    // Callbacks définis par App.jsx
+    this.onScoreUpdated = null;
+    this.onPause = null;
+    this.onReturnToMenu = null;
 
     // Propriétés de base
     this.scene = null;
@@ -79,6 +72,11 @@ export default class Game {
     this.gameCamera = null;
     this.controls = null;
     this.initialized = false;
+
+    // Physics debug
+    this.showPhysicsDebug = false;
+    this.cannonDebugger = null;
+    this.debugGroup = null;
 
     // Variables pour l'affichage FPS
     this.frameCount = 0;
@@ -110,11 +108,6 @@ export default class Game {
 
       // Afficher la SEED actuelle
       this.displaySeed();
-
-      // Créer tout de suite un debugger pour la physique
-      if (DEBUG.SHOW_PHYSICS) {
-        this.debugger = new CannonDebugger(this.scene, this.physicsWorld);
-      }
 
       // Démarrer la boucle d'animation immédiatement
       this.animate();
@@ -376,6 +369,9 @@ export default class Game {
             ? this.terrain.getTerrainHeightAt(x)
             : 0;
         });
+        this.controls.onPause = () => {
+          if (this.onPause) this.onPause();
+        };
         this.controls.enabled = false;
 
         // Résoudre immédiatement
@@ -398,6 +394,33 @@ export default class Game {
         ) {
           this.terrain.generateAdditionalSegments();
         }
+
+        // Créer le debugger physique — terrain uniquement via onInit
+        const debugColors = { segment: 0x00ff00, barrier: 0xff4400, background: 0x0055ff, bottom: 0xffff00 };
+        this.debugGroup = new THREE.Group();
+        this.debugGroup.visible = this.showPhysicsDebug;
+        this.scene.add(this.debugGroup);
+        this.cannonDebugger = new CannonDebugger(this.debugGroup, this.physicsWorld, {
+          onInit: (body, mesh) => {
+            const debugType = body._terrainDebug;
+            if (!debugType) {
+              mesh.visible = false; // cacher véhicule, roues, etc.
+            } else {
+              mesh.material = mesh.material.clone();
+              mesh.material.color.setHex(debugColors[debugType] ?? 0x00ff00);
+            }
+          },
+        });
+
+        // Touche H pour toggler les hitboxes
+        this._debugKeyHandler = (e) => {
+          if (e.key === 'h' || e.key === 'H') {
+            this.showPhysicsDebug = !this.showPhysicsDebug;
+            if (this.debugGroup) this.debugGroup.visible = this.showPhysicsDebug;
+            console.log('Physics debug:', this.showPhysicsDebug ? 'ON' : 'OFF');
+          }
+        };
+        document.addEventListener('keydown', this._debugKeyHandler);
 
         // Initialiser les statistiques finales
         this.setupStats();
@@ -431,6 +454,8 @@ export default class Game {
 
       // Activer les contrôles et cacher l'écran de chargement
       if (this.controls) {
+        // Réinitialiser l'état des touches avant d'activer pour éviter les touches "bloquées"
+        this.controls.keys = { forward: false, backward: false, left: false, right: false };
         this.controls.enabled = true;
         console.log('Contrôles activés');
       } else {
@@ -443,6 +468,9 @@ export default class Game {
             ? this.terrain.getTerrainHeightAt(x)
             : 0;
         });
+        this.controls.onPause = () => {
+          if (this.onPause) this.onPause();
+        };
         this.controls.enabled = true;
       }
 
@@ -638,18 +666,13 @@ export default class Game {
     // Désactiver les ombres pour améliorer les performances
     this.renderer.shadowMap.enabled = false;
 
-    // Appliquer l'effet cartoon/cel-shading si activé
-    if (DEBUG.CARTOON_STYLE) {
-      this.outlineEffect = new OutlineEffect(this.renderer, {
-        defaultThickness: 0.01,
-        defaultColor: [0, 0, 0],
-        defaultAlpha: 0.8,
-        defaultKeepAlive: true,
-      });
-    }
-
     // Gestion du redimensionnement de la fenêtre
     window.addEventListener('resize', this.onWindowResize.bind(this));
+
+    // OutlineEffect : contours cartoon noirs
+    this.outlineEffect = new OutlineEffect(this.renderer, {
+      defaultThickness: 0.01,
+    });
 
     console.log('Scene, camera et renderer initialisés');
   }
@@ -696,10 +719,19 @@ export default class Game {
   }
 
   onWindowResize() {
-    // Mettre à jour la taille du renderer et le ratio d'aspect de la caméra
-    this.camera.aspect = window.innerWidth / window.innerHeight;
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    const dpr = this.renderer.getPixelRatio();
+    const pw = Math.floor(w * dpr);
+    const ph = Math.floor(h * dpr);
+
+    this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
-    this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this.renderer.setSize(w, h);
+
+    if (this.outlineEffect) {
+      this.outlineEffect.setSize(w, h);
+    }
   }
 
   animate = () => {
@@ -715,6 +747,15 @@ export default class Game {
         this.physicsWorld.step(PHYSICS_TIME_STEP);
       }
 
+      // Mise à jour inAir avant les contrôles
+      if (this.vehicle && this.vehicle.getChassisBody()) {
+        const ch = this.vehicle.getChassisBody();
+        const terrainH = this.terrain?.getTerrainHeightAt?.(ch.position.x);
+        this.vehicle.inAir = terrainH != null
+          ? (ch.position.y - terrainH) > 2.5
+          : Math.abs(ch.velocity.y) > 0.5;
+      }
+
       // Mise à jour des contrôles
       if (this.controls && this.controls.enabled) {
         this.controls.update();
@@ -724,13 +765,17 @@ export default class Game {
       if (this.vehicle) {
         this.vehicle.update();
 
-        // Vérifier si le véhicule est tombé hors du terrain
+        // Vérifier si le véhicule est sorti des limites ou retourné
         if (this.vehicle.getChassisBody()) {
-          this.checkOutOfBounds();
+          this.checkOutOfBounds(deltaTime);
         }
+
+        // Détection des cascades (sauts, flips)
+        this.detectStunts(deltaTime);
 
         // Mise à jour des statistiques du jeu
         this.updateStatsDisplay();
+        this.updateScore();
       }
 
       if (this.terrain) {
@@ -748,7 +793,7 @@ export default class Game {
         this.vehicle.getChassisBody &&
         this.vehicle.getChassisBody()
       ) {
-        this.gameCamera.update(this.vehicle.getChassisBody().position);
+        this.gameCamera.update(this.vehicle.getChassisBody().position, deltaTime);
 
         // S'assurer que la caméra principale suit la caméra de jeu
         if (this.camera && this.gameCamera.camera) {
@@ -757,16 +802,16 @@ export default class Game {
         }
       } else if (this.gameCamera) {
         // Mise à jour de secours si le véhicule n'est pas encore prêt
-        this.gameCamera.update(new THREE.Vector3(5, 10, 0));
+        this.gameCamera.update(new THREE.Vector3(5, 10, 0), deltaTime);
       } else if (this.camera && !this.gameCamera) {
         // Initialisation de secours de la caméra si elle n'existe pas encore
         console.log('Creating gameCamera in animate loop as fallback');
         this.gameCamera = new Camera(this.camera);
       }
 
-      // Afficher le débugger physique si activé
-      if (DEBUG.SHOW_PHYSICS && this.debugger) {
-        this.debugger.update();
+      // Mettre à jour le débugger physique si activé
+      if (this.showPhysicsDebug && this.cannonDebugger) {
+        this.cannonDebugger.update();
       }
 
       // Affichage des FPS si activé
@@ -783,17 +828,6 @@ export default class Game {
           if (!this.fpsDisplay) {
             this.fpsDisplay = document.createElement('div');
             this.fpsDisplay.id = 'fps-display';
-            this.fpsDisplay.style.cssText = `
-              position: absolute;
-              top: 120px;
-              right: 20px;
-              background: rgba(0, 0, 0, 0.7);
-              color: white;
-              padding: 8px 12px;
-              border-radius: 5px;
-              font-size: 14px;
-              z-index: 1000;
-            `;
             document.body.appendChild(this.fpsDisplay);
           }
 
@@ -804,14 +838,9 @@ export default class Game {
 
     // Toujours effectuer le rendu de la scène, même si le jeu n'est pas en cours
     if (this.scene && this.camera && this.renderer) {
-      if (DEBUG.CARTOON_STYLE && this.outlineEffect) {
-        // Rendu avec effet de contour pour style cartoon
+      if (this.outlineEffect) {
         this.outlineEffect.render(this.scene, this.camera);
-      } else if (this.composer && this.composer.passes.length > 0) {
-        // Rendu avec post-processing
-        this.composer.render();
       } else {
-        // Rendu standard
         this.renderer.render(this.scene, this.camera);
       }
     }
@@ -854,6 +883,9 @@ export default class Game {
         maxSpeed: 0,
         startPosition: 0,
         lastPosition: 0,
+        score: 0,
+        jumps: 0,
+        jumpBonus: 0,
       };
 
       // Mettre à jour l'affichage des statistiques
@@ -903,6 +935,9 @@ export default class Game {
         maxSpeed: 0,
         startPosition: resetX,
         lastPosition: resetX,
+        score: 0,
+        jumps: 0,
+        jumpBonus: 0,
       };
 
       // Mettre à jour l'affichage
@@ -975,6 +1010,9 @@ export default class Game {
         maxSpeed: 0,
         startPosition: 0,
         lastPosition: 0,
+        score: 0,
+        jumps: 0,
+        jumpBonus: 0,
       };
 
       // Réinitialiser l'affichage des statistiques
@@ -1012,12 +1050,25 @@ export default class Game {
         this.vehicle,
         this.terrain.getTerrainHeightAt.bind(this.terrain)
       );
+      this.controls.onPause = () => {
+        if (this.onPause) this.onPause();
+      };
 
       // Afficher la SEED
       this.displaySeed();
 
-      // Recréer le débogueur
-      this.debugger = new CannonDebugger(this.scene, this.physicsWorld);
+      // Recréer le débugger physique
+      const debugColors2 = { segment: 0x00ff00, barrier: 0xff4400, background: 0x0055ff, bottom: 0xffff00 };
+      this.debugGroup = new THREE.Group();
+      this.debugGroup.visible = this.showPhysicsDebug;
+      this.scene.add(this.debugGroup);
+      this.cannonDebugger = new CannonDebugger(this.debugGroup, this.physicsWorld, {
+        onInit: (body, mesh) => {
+          const debugType = body._terrainDebug;
+          if (!debugType) { mesh.visible = false; }
+          else { mesh.material = mesh.material.clone(); mesh.material.color.setHex(debugColors2[debugType] ?? 0x00ff00); }
+        },
+      });
 
       // Enregistrer la position initiale
       if (this.vehicle && this.vehicle.getChassisBody()) {
@@ -1052,6 +1103,9 @@ export default class Game {
 
       // Supprimer les écouteurs d'événements
       window.removeEventListener('resize', this.onWindowResize);
+      if (this._debugKeyHandler) {
+        document.removeEventListener('keydown', this._debugKeyHandler);
+      }
 
       // Supprimer les écouteurs d'événements des contrôles
       if (this.controls) {
@@ -1070,6 +1124,8 @@ export default class Game {
         '#game-stats',
         '#seed-display',
         '#controls-display',
+        '#game-over',
+        '#score-display',
       ];
 
       elementsToRemove.forEach((selector) => {
@@ -1117,8 +1173,6 @@ export default class Game {
         try {
           this.renderer.dispose();
           this.renderer.forceContextLoss();
-          // Ne pas tenter de modifier directement des propriétés read-only
-          this.renderer.domElement = null;
         } catch (rendererError) {
           console.warn('Erreur lors du nettoyage du renderer:', rendererError);
           // Ignorer les erreurs du renderer, car elles ne sont pas critiques
@@ -1141,20 +1195,8 @@ export default class Game {
     // Créer l'élément d'affichage de la SEED
     const seedDisplay = document.createElement('div');
     seedDisplay.id = 'seed-display';
-    seedDisplay.className = 'hud-element';
-    seedDisplay.style.cssText = `
-      position: absolute;
-      bottom: 20px;
-      right: 20px;
-      background: rgba(0, 0, 0, 0.7);
-      color: white;
-      padding: 8px 12px;
-      border-radius: 5px;
-      font-size: 14px;
-      z-index: 1000;
-    `;
 
-    seedDisplay.innerHTML = `<span style="color:#4dc1f9">SEED:</span> ${this.currentSeed}`;
+    seedDisplay.innerHTML = `SEED: ${this.currentSeed}`;
 
     // Ajouter au DOM
     document.body.appendChild(seedDisplay);
@@ -1169,60 +1211,75 @@ export default class Game {
     // Créer l'élément d'affichage des statistiques
     const statsDisplay = document.createElement('div');
     statsDisplay.id = 'game-stats';
-    statsDisplay.style.cssText = `
-      position: absolute;
-      top: 20px;
-      right: 20px;
-      background: rgba(0, 0, 0, 0.7);
-      color: white;
-      padding: 10px 15px;
-      border-radius: 5px;
-      font-family: 'Arial', sans-serif;
-      font-size: 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 5px;
-      z-index: 1000;
-    `;
 
     // Créer les éléments pour la vitesse et la distance
     const speedDisplay = document.createElement('div');
     speedDisplay.id = 'speed-display';
-    speedDisplay.innerHTML =
-      '<span style="color:#4dc1f9">Vitesse:</span> 0 km/h';
+    speedDisplay.innerHTML = '<span class="hud-label">Vitesse:</span> 0 km/h';
 
     const distanceDisplay = document.createElement('div');
     distanceDisplay.id = 'distance-display';
-    distanceDisplay.innerHTML =
-      '<span style="color:#4dc1f9">Distance:</span> 0 m';
+    distanceDisplay.innerHTML = '<span class="hud-label">Distance:</span> 0 m';
 
     const maxSpeedDisplay = document.createElement('div');
     maxSpeedDisplay.id = 'max-speed-display';
     maxSpeedDisplay.innerHTML =
-      '<span style="color:#4dc1f9">Vitesse max:</span> 0 km/h';
+      '<span class="hud-label">Vitesse max:</span> 0 km/h';
+
+    const jumpDisplay = document.createElement('div');
+    jumpDisplay.id = 'jump-display';
+    jumpDisplay.innerHTML =
+      '<span class="hud-label">Sauts:</span> 0';
 
     // Ajouter au DOM
     statsDisplay.appendChild(speedDisplay);
     statsDisplay.appendChild(distanceDisplay);
     statsDisplay.appendChild(maxSpeedDisplay);
+    statsDisplay.appendChild(jumpDisplay);
     document.body.appendChild(statsDisplay);
+
+    // Score central
+    this.initScoreDisplay();
+  }
+
+  // Créer l'affichage du score central (haut centre)
+  initScoreDisplay() {
+    const old = document.getElementById('score-display');
+    if (old) old.remove();
+
+    const scoreDisplay = document.createElement('div');
+    scoreDisplay.id = 'score-display';
+    scoreDisplay.innerHTML = `
+      <span class="score-label">SCORE</span>
+      <span class="score-value">0</span>
+    `;
+    document.body.appendChild(scoreDisplay);
+  }
+
+  // Afficher un popup "+X pts" qui monte en disparaissant
+  showScorePopup(text, color) {
+    const popup = document.createElement('div');
+    popup.className = 'score-popup';
+    popup.textContent = text;
+    popup.style.color = color;
+    document.body.appendChild(popup);
+    popup.addEventListener('animationend', () => popup.remove());
+  }
+
+  // Effet "bounce" sur le score central
+  _triggerScoreBump() {
+    const el = document.querySelector('#score-display .score-value');
+    if (!el) return;
+    el.classList.remove('score-bump');
+    void el.offsetWidth; // force reflow
+    el.classList.add('score-bump');
+    el.addEventListener('animationend', () => el.classList.remove('score-bump'), { once: true });
   }
 
   // Méthode pour mettre à jour l'affichage des statistiques
   updateStatsDisplay() {
     // Vérifier que le véhicule existe
     if (!this.vehicle || !this.vehicle.getChassisBody()) return;
-
-    // Récupérer la position actuelle et calculer la distance parcourue
-    const currentPosition = this.vehicle.getChassisBody().position.x;
-    const deltaDistance = Math.max(
-      0,
-      currentPosition - this.gameStats.lastPosition
-    );
-
-    // Mettre à jour la distance totale
-    this.gameStats.distanceTraveled += deltaDistance;
-    this.gameStats.lastPosition = currentPosition;
 
     // Obtenir la vitesse actuelle
     const currentSpeed = this.vehicle.getSpeedKmh();
@@ -1238,28 +1295,26 @@ export default class Game {
     const maxSpeedDisplay = document.getElementById('max-speed-display');
 
     if (speedDisplay) {
-      speedDisplay.innerHTML = `<span style="color:#4dc1f9">Vitesse:</span> ${currentSpeed} km/h`;
-      // Changer la couleur si la vitesse est élevée
-      if (currentSpeed > 50) {
-        speedDisplay.style.color = '#f94d4d';
-      } else {
-        speedDisplay.style.color = 'white';
-      }
+      speedDisplay.innerHTML = `<span class="hud-label">Vitesse:</span> ${currentSpeed} km/h`;
     }
 
     if (distanceDisplay) {
-      // Afficher en mètres ou kilomètres selon la distance
       if (this.gameStats.distanceTraveled >= 1000) {
         const distanceKm = (this.gameStats.distanceTraveled / 1000).toFixed(2);
-        distanceDisplay.innerHTML = `<span style="color:#4dc1f9">Distance:</span> ${distanceKm} km`;
+        distanceDisplay.innerHTML = `<span class="hud-label">Distance:</span> ${distanceKm} km`;
       } else {
         const distanceM = Math.floor(this.gameStats.distanceTraveled);
-        distanceDisplay.innerHTML = `<span style="color:#4dc1f9">Distance:</span> ${distanceM} m`;
+        distanceDisplay.innerHTML = `<span class="hud-label">Distance:</span> ${distanceM} m`;
       }
     }
 
     if (maxSpeedDisplay) {
-      maxSpeedDisplay.innerHTML = `<span style="color:#4dc1f9">Vitesse max:</span> ${this.gameStats.maxSpeed} km/h`;
+      maxSpeedDisplay.innerHTML = `<span class="hud-label">Vitesse max:</span> ${this.gameStats.maxSpeed} km/h`;
+    }
+
+    const jumpDisplay = document.getElementById('jump-display');
+    if (jumpDisplay) {
+      jumpDisplay.innerHTML = `<span class="hud-label">Sauts:</span> ${this.gameStats.jumps}`;
     }
   }
 
@@ -1313,11 +1368,6 @@ export default class Game {
     this.renderer.shadowMap.autoUpdate = true;
     this.renderer.setClearColor(fogColor);
 
-    // Paramètres de post-processing pour ajouter de la profondeur
-    if (!DEBUG.WIREFRAME) {
-      this.setupPostProcessing();
-    }
-
     // Éclairage de la scène
     this.setupLights();
 
@@ -1331,43 +1381,6 @@ export default class Game {
     }
   }
 
-  // Configuration du post-processing pour améliorer le rendu visuel
-  setupPostProcessing() {
-    // Créer le compositeur pour le post-processing
-    this.composer = new EffectComposer(this.renderer);
-
-    // Rendu de base
-    const renderPass = new RenderPass(this.scene, this.camera);
-    this.composer.addPass(renderPass);
-
-    // Shader de contour (cartoon)
-    if (DEBUG.CARTOON_STYLE) {
-      const toonPass = new ShaderPass(ToonShader1);
-      toonPass.uniforms.uBaseColor.value = new THREE.Color(0xffffff);
-      toonPass.uniforms.uLineColor1.value = new THREE.Color(0x000000);
-      toonPass.uniforms.uLineColor2.value = new THREE.Color(0x000000);
-      toonPass.material.extensions.derivatives = true;
-      this.composer.addPass(toonPass);
-    }
-
-    // Simple bloom pour les lumières
-    const bloomPass = new UnrealBloomPass(
-      new THREE.Vector2(window.innerWidth, window.innerHeight),
-      0.3, // Force réduite
-      0.4, // Rayon réduit
-      0.9 // Seuil augmenté
-    );
-    this.composer.addPass(bloomPass);
-
-    // Anti-aliasing final
-    const fxaaPass = new ShaderPass(FXAAShader);
-    fxaaPass.material.uniforms['resolution'].value.x =
-      1 / (window.innerWidth * this.renderer.getPixelRatio());
-    fxaaPass.material.uniforms['resolution'].value.y =
-      1 / (window.innerHeight * this.renderer.getPixelRatio());
-    this.composer.addPass(fxaaPass);
-  }
-
   // Mise en place des lumières pour mettre en valeur l'arrière-plan
   setupLights() {
     // Lumière ambiante
@@ -1376,10 +1389,10 @@ export default class Game {
 
     // Lumière directionnelle (soleil)
     this.directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-    directionalLight.position.set(100, 100, 0);
+    this.directionalLight.position.set(100, 100, 0);
     // Désactiver les ombres pour améliorer les performances
-    directionalLight.castShadow = false;
-    this.scene.add(directionalLight);
+    this.directionalLight.castShadow = false;
+    this.scene.add(this.directionalLight);
 
     // Lumière secondaire pour accentuer les contours
     const fillLight = new THREE.DirectionalLight(0xffffff, 0.7);
@@ -1425,7 +1438,7 @@ export default class Game {
   }
 
   // Vérifier si le véhicule est sorti des limites du terrain
-  checkOutOfBounds() {
+  checkOutOfBounds(deltaTime) {
     const chassisBody = this.vehicle.getChassisBody();
     if (!chassisBody) return;
 
@@ -1435,11 +1448,43 @@ export default class Game {
     // Si la position Y est inférieure à la hauteur minimale, le joueur est tombé
     if (position.y < minHeight) {
       this.showGameOver('VOUS ÊTES TOMBÉ !');
+      return;
     }
+
+    // Vérifier si le véhicule est retourné sur le toit pendant trop longtemps
+    if (this.isVehicleUpsideDown()) {
+      this.upsideDownTime = this.upsideDownTime || 0;
+      this.upsideDownTime += deltaTime;
+
+      // Si le véhicule est sur le toit pendant plus de 2 secondes, game over
+      if (this.upsideDownTime > 2) {
+        this.showGameOver('VÉHICULE RETOURNÉ !');
+        this.upsideDownTime = 0;
+      }
+    } else {
+      // Réinitialiser le compteur si le véhicule n'est pas sur le toit
+      this.upsideDownTime = 0;
+    }
+  }
+
+  // Vérifier si le véhicule est retourné sur le toit
+  isVehicleUpsideDown() {
+    if (!this.vehicle || !this.vehicle.getChassisBody()) return false;
+
+    // Récupérer l'orientation du véhicule
+    const carBody = this.vehicle.getChassisBody();
+    const upVector = new CANNON.Vec3(0, 1, 0);
+    const carUpVector = new CANNON.Vec3();
+    carBody.vectorToWorldFrame(upVector, carUpVector);
+
+    return carUpVector.y < -0.7;
   }
 
   // Afficher l'écran de fin de jeu
   showGameOver(message) {
+    // Ne pas afficher l'écran de game over si le jeu est déjà terminé
+    if (!this.isRunning) return;
+
     // Mettre le jeu en pause
     this.isRunning = false;
     if (this.controls) {
@@ -1455,116 +1500,91 @@ export default class Game {
     // Créer l'écran de game over
     const gameOverScreen = document.createElement('div');
     gameOverScreen.id = 'game-over';
-    gameOverScreen.style.cssText = `
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background-color: rgba(0, 0, 0, 0.8);
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-      color: white;
-      font-family: Arial, sans-serif;
-      z-index: 3000;
-      backdrop-filter: blur(5px);
-    `;
 
-    // Titre game over
+    // Titre
     const gameOverTitle = document.createElement('h1');
+    gameOverTitle.className = 'game-over-title';
     gameOverTitle.textContent = 'GAME OVER';
-    gameOverTitle.style.cssText = `
-      font-size: 4rem;
-      color: #e74c3c;
-      margin-bottom: 20px;
-      text-shadow: 0 0 10px rgba(231, 76, 60, 0.7);
-    `;
     gameOverScreen.appendChild(gameOverTitle);
 
-    // Message de game over
+    // Message de cause
     const gameOverMessage = document.createElement('p');
+    gameOverMessage.className = 'game-over-message';
     gameOverMessage.textContent = message;
-    gameOverMessage.style.cssText = `
-      font-size: 2rem;
-      margin-bottom: 40px;
-    `;
     gameOverScreen.appendChild(gameOverMessage);
 
-    // Stats de jeu
+    // Carte de stats
     const stats = document.createElement('div');
-    stats.style.cssText = `
-      margin-bottom: 40px;
-      font-size: 1.5rem;
-      text-align: center;
-    `;
+    stats.className = 'game-over-stats';
 
-    // Distance parcourue
+    const distanceVal = Math.floor(this.gameStats.distanceTraveled);
+    const scoreVal = this.gameStats.score.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
     stats.innerHTML = `
-      <p>Distance parcourue: ${Math.floor(
-        this.gameStats.distanceTraveled
-      )} m</p>
-      <p>Vitesse maximale: ${this.gameStats.maxSpeed} km/h</p>
-      <p>SEED: <span style="color:#4dc1f9">${this.currentSeed}</span></p>
+      <div class="game-over-stat game-over-stat--score">
+        <span class="hud-label">Score final</span>
+        <span class="game-over-stat-value">${scoreVal} pts</span>
+      </div>
+      <div class="game-over-stat">
+        <span class="hud-label">Distance</span>
+        <span class="game-over-stat-value">${distanceVal} m</span>
+      </div>
+      <div class="game-over-stat">
+        <span class="hud-label">Vitesse max</span>
+        <span class="game-over-stat-value">${this.gameStats.maxSpeed} km/h</span>
+      </div>
+      <div class="game-over-stat">
+        <span class="hud-label">Sauts</span>
+        <span class="game-over-stat-value">${this.gameStats.jumps}</span>
+        <span class="hud-label" style="margin-left:16px">Bonus sauts</span>
+        <span class="game-over-stat-value">${this.gameStats.jumpBonus} pts</span>
+      </div>
+      <div class="game-over-stat">
+        <span class="hud-label">SEED</span>
+        <span class="game-over-stat-value">${this.currentSeed}
+          <button class="go-copy-seed-btn" title="Copier">📋</button>
+        </span>
+      </div>
     `;
     gameOverScreen.appendChild(stats);
 
-    // Bouton pour copier la seed
-    const copySeedButton = document.createElement('button');
-    copySeedButton.textContent = 'COPIER LA SEED';
-    copySeedButton.style.cssText = `
-      background-color: #4dc1f9;
-      color: white;
-      border: none;
-      border-radius: 5px;
-      padding: 15px 30px;
-      font-size: 1.2rem;
-      cursor: pointer;
-      margin: 10px;
-      transition: background-color 0.3s, transform 0.2s;
-    `;
-    copySeedButton.addEventListener('click', () => {
-      // Copier la SEED dans le presse-papier
+    // Copy seed click handler
+    stats.querySelector('.go-copy-seed-btn').addEventListener('click', (e) => {
       navigator.clipboard
         .writeText(this.currentSeed.toString())
         .then(() => {
-          // Changement temporaire du texte du bouton pour confirmer la copie
-          const originalText = copySeedButton.textContent;
-          copySeedButton.textContent = 'SEED COPIÉE !';
-          copySeedButton.style.backgroundColor = '#00cc00';
+          e.target.textContent = '✅';
           setTimeout(() => {
-            copySeedButton.textContent = originalText;
-            copySeedButton.style.backgroundColor = '#4dc1f9';
+            e.target.textContent = '📋';
           }, 1500);
         })
-        .catch((err) => {
-          console.error('Erreur lors de la copie de la SEED:', err);
-          copySeedButton.textContent = 'ERREUR DE COPIE';
-          copySeedButton.style.backgroundColor = '#e74c3c';
+        .catch(() => {
+          e.target.textContent = '❌';
         });
     });
-    gameOverScreen.appendChild(copySeedButton);
 
-    // Bouton pour retourner au menu principal
+    // Boutons
+    const btnRow = document.createElement('div');
+    btnRow.className = 'game-over-buttons';
+
+    const replayButton = document.createElement('button');
+    replayButton.className = 'go-btn-replay';
+    replayButton.textContent = 'Rejouer';
+    replayButton.addEventListener('click', () => window.location.reload());
+
     const menuButton = document.createElement('button');
-    menuButton.textContent = 'MENU PRINCIPAL';
-    menuButton.style.cssText = `
-      background-color: #e74c3c;
-      color: white;
-      border: none;
-      border-radius: 5px;
-      padding: 15px 30px;
-      font-size: 1.2rem;
-      cursor: pointer;
-      margin: 10px;
-      transition: background-color 0.3s, transform 0.2s;
-    `;
+    menuButton.className = 'go-btn-menu';
+    menuButton.textContent = 'Menu principal';
     menuButton.addEventListener('click', () => {
-      // Rediriger vers la page d'accueil ou déclencher l'événement approprié
-      window.location.reload();
+      if (typeof this.onReturnToMenu === 'function') {
+        this.onReturnToMenu();
+      } else {
+        window.location.reload();
+      }
     });
-    gameOverScreen.appendChild(menuButton);
+
+    btnRow.appendChild(replayButton);
+    btnRow.appendChild(menuButton);
+    gameOverScreen.appendChild(btnRow);
 
     // Ajouter l'écran au document
     document.body.appendChild(gameOverScreen);
@@ -1582,9 +1602,6 @@ export default class Game {
     const material = new THREE.MeshToonMaterial({
       color: color,
       emissive: emissive,
-      shininess: 0,
-      specular: 0x000000,
-      flatShading: true,
       gradientMap: this.createToonGradientTexture(),
     });
 
@@ -1648,5 +1665,77 @@ export default class Game {
         this.applyCartoonStyle(child, defaultColor)
       );
     }
+  }
+
+  // Calcul et mise à jour du score en fonction des performances du joueur
+  updateScore() {
+    if (!this.vehicle) return;
+
+    const currentPosition = this.vehicle.getChassisBody().position.x;
+    const speed = this.vehicle.getSpeedKmh();
+
+    // Distance = point le plus avancé depuis le départ (pas la somme des déplacements)
+    const forwardDistance = Math.max(0, currentPosition - this.gameStats.startPosition);
+    this.gameStats.distanceTraveled = Math.max(this.gameStats.distanceTraveled, forwardDistance);
+    this.gameStats.lastPosition = currentPosition;
+
+    // Mise à jour de la vitesse maximale
+    if (speed > this.gameStats.maxSpeed) {
+      this.gameStats.maxSpeed = speed;
+    }
+
+    // Score = distance + bonus sauts (airtime)
+    const newScore =
+      Math.floor(this.gameStats.distanceTraveled) +
+      this.gameStats.jumpBonus;
+
+    // Si le score a changé, mettre à jour et notifier
+    if (newScore !== this.gameStats.score) {
+      this.gameStats.score = newScore;
+
+      // Mettre à jour l'affichage du score central
+      const scoreValueEl = document.querySelector('#score-display .score-value');
+      if (scoreValueEl) scoreValueEl.textContent = newScore;
+
+      // Appeler le callback si défini
+      if (typeof this.onScoreUpdated === 'function') {
+        this.onScoreUpdated(newScore);
+      }
+    }
+  }
+
+  // Détection des sauts et calcul du bonus airtime
+  detectStunts(deltaTime) {
+    if (!this.vehicle) return;
+
+    const chassis = this.vehicle.getChassisBody();
+
+    // Détection aérienne basée sur la hauteur au-dessus du terrain
+    // (évite le faux négatif à l'apex où vitesse verticale ≈ 0)
+    const terrainH = this.terrain?.getTerrainHeightAt?.(chassis.position.x);
+    const isInAir = (terrainH != null)
+      ? (chassis.position.y - terrainH) > 2.2
+      : Math.abs(chassis.velocity.y) > 0.5;
+
+    const wasInAir = this._wasInAir ?? false;
+
+    if (isInAir) {
+      this._airTime = (this._airTime ?? 0) + deltaTime;
+    }
+
+    // Atterrissage : récompenser l'airtime (1pt par 0.1s, arrondi au plancher)
+    if (wasInAir && !isInAir) {
+      const airTime = this._airTime ?? 0;
+      if (airTime >= 0.25) {
+        const pts = Math.floor(airTime * 10);
+        this.gameStats.jumps++;
+        this.gameStats.jumpBonus += pts;
+        this.showScorePopup(`SAUT! +${pts}`, 'var(--color-yellow)');
+        this._triggerScoreBump();
+      }
+      this._airTime = 0;
+    }
+
+    this._wasInAir = isInAir;
   }
 }

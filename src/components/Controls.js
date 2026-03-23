@@ -6,6 +6,7 @@ export default class Controls {
     this.vehicle = vehicle;
     this.getTerrainHeight = getTerrainHeightCallback;
     this.enabled = true; // Enable controls by default
+    this.onPause = null; // Callback déclenché sur Escape
 
     // Vitesse du véhicule
     this.maxForce = 1000;
@@ -36,6 +37,12 @@ export default class Controls {
   initEventListeners() {
     // Gestionnaire d'événements de touche pressée
     this.keyDownHandler = (event) => {
+      // Escape fonctionne même quand les contrôles sont désactivés (ex: reprise depuis la pause)
+      if (event.key === 'Escape') {
+        if (typeof this.onPause === 'function') this.onPause();
+        return;
+      }
+
       if (!this.enabled) {
         console.log('Controls disabled: ignoring keydown event');
         return;
@@ -63,8 +70,7 @@ export default class Controls {
 
     // Gestionnaire d'événements de touche relâchée
     this.keyUpHandler = (event) => {
-      if (!this.enabled) return;
-
+      // Toujours traiter les relâchements pour éviter les touches "bloquées"
       const key = event.key.toLowerCase();
 
       // Gestion des touches
@@ -174,12 +180,9 @@ export default class Controls {
     let force = 0;
     let steeringAngle = 0;
 
-    // Accélération avant (droite)/arrière (gauche) - INVERSÉ pour correspondre à l'orientation désirée
     if (this.keys.forward) {
-      // Avancer vers la droite (valeur positive)
       force = this.maxForce;
     } else if (this.keys.backward) {
-      // Reculer vers la gauche (valeur négative)
       force = -this.maxForce / 2;
     }
 
@@ -190,24 +193,30 @@ export default class Controls {
 
     // Direction gauche/droite
     if (this.keys.left) {
-      steeringAngle = 0.5; // Rotation à gauche
+      steeringAngle = 0.5;
     } else if (this.keys.right) {
-      steeringAngle = -0.5; // Rotation à droite
+      steeringAngle = -0.5;
     }
 
-    // S'assurer que le véhicule a les méthodes nécessaires
     if (typeof this.vehicle.applyForceToAllWheels === 'function') {
-      // Multiplier la force par -1 pour inverser la direction
-      this.vehicle.applyForceToAllWheels(-force); // Le signe est inversé pour correspondre à la direction désirée
-    } else {
-      console.error('La méthode applyForceToAllWheels est manquante');
+      this.vehicle.applyForceToAllWheels(-force);
     }
 
-    // Appliquer la rotation
-    this.applySteeringAngle(steeringAngle);
-
-    // Contrôle aérien si le véhicule est en l'air
-    this.applyAirControl();
+    // Rotation : comportement distinct sol / air
+    if (!this.vehicle.inAir) {
+      this.applySteeringAngle(steeringAngle);
+    } else {
+      const chassis = this.vehicle.getChassisBody();
+      if (chassis) {
+        if (this.keys.left) {
+          chassis.angularVelocity.z = 2.1;
+        } else if (this.keys.right) {
+          chassis.angularVelocity.z = -2.1;
+        } else {
+          chassis.angularVelocity.z *= 0.95;
+        }
+      }
+    }
   }
 
   applySteeringAngle(angle) {

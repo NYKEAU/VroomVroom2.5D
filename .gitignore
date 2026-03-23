@@ -1,3 +1,23 @@
+# Dependency directories
+node_modules/
+.pnp/
+.pnp.js
+
+# Build artifacts
+dist/
+build/
+public/dist/
+lib/
+out/
+.cache/
+
+# Environment variables
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
 # Logs
 logs
 *.log
@@ -7,18 +27,21 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
-*.local
-
 # Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+*.swp
+*.swo
 .DS_Store
+Thumbs.db
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
+
+# Claude
+CLAUDE.md
+.claude/

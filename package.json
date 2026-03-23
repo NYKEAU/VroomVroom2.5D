@@ -1,7 +1,7 @@
 {
-  "name": "racing-game",
+  "name": "VroomVroom2.5D",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.9",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -11,6 +11,7 @@
     "@types/three": "^0.140.0",
     "cannon-es": "^0.19.0",
     "cannon-es-debugger": "^1.0.0",
+    "firebase": "^11.6.0",
     "react": "^17.0.2",
     "react-dom": "^17.0.2",
     "stats.js": "^0.17.0",
