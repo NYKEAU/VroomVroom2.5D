@@ -12,7 +12,6 @@ import {
 import {
   getFirestore,
   doc,
-  setDoc,
   getDoc,
   collection,
   query,
@@ -20,6 +19,7 @@ import {
   limit,
   getDocs,
 } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 
 // Configuration Firebase - Remplacez ces valeurs par celles de votre projet
 const firebaseConfig = {
@@ -33,13 +33,14 @@ const firebaseConfig = {
 
 // Variable pour suivre si Firebase est correctement initialisé
 let isFirebaseInitialized = false;
-let app, auth, db, provider;
+let app, auth, db, functions, provider;
 
 // Essayer d'initialiser Firebase avec la configuration fournie
 try {
   app = initializeApp(firebaseConfig);
   auth = getAuth(app);
   db = getFirestore(app);
+  functions = getFunctions(app, 'europe-west1');
   provider = new GoogleAuthProvider();
   isFirebaseInitialized = true;
   console.log('Firebase initialisé avec succès');
@@ -118,37 +119,28 @@ export const logOut = async () => {
   }
 };
 
-// Fonction pour enregistrer un score
-export const saveScore = async (userId, score, seed) => {
+// Génère un token de session côté serveur au démarrage d'une partie.
+// Retourne le token (string) à stocker côté client.
+export const generateSessionToken = async () => {
   if (!isFirebaseInitialized) {
-    console.warn(
-      "Firebase n'est pas initialisé, impossible d'enregistrer le score"
-    );
+    console.warn("Firebase n'est pas initialisé, session non créée.");
+    return null;
+  }
+  const fn = httpsCallable(functions, 'generateSessionToken');
+  const result = await fn();
+  return result.data.token;
+};
+
+// Soumet le score à la fin de partie via le token de session signé.
+// Le serveur valide le token, le ratio score/temps, et enregistre si meilleur.
+export const submitScore = async (token, score, seed) => {
+  if (!isFirebaseInitialized) {
+    console.warn("Firebase n'est pas initialisé, score non enregistré.");
     return false;
   }
-
-  try {
-    // Vérifier si l'utilisateur a déjà un score
-    const userScoreRef = doc(db, 'scores', userId);
-    const userScoreDoc = await getDoc(userScoreRef);
-
-    // Mise à jour uniquement si le nouveau score est meilleur
-    if (!userScoreDoc.exists() || userScoreDoc.data().score < score) {
-      await setDoc(userScoreRef, {
-        userId,
-        username: auth.currentUser.displayName,
-        photoURL: auth.currentUser.photoURL,
-        score,
-        seed,
-        timestamp: new Date(),
-      });
-      return true;
-    }
-    return false;
-  } catch (error) {
-    console.error("Erreur lors de l'enregistrement du score:", error);
-    throw error;
-  }
+  const fn = httpsCallable(functions, 'submitScore');
+  const result = await fn({ token, score, seed });
+  return result.data.updated;
 };
 
 // Fonction pour obtenir le top 10 des scores
@@ -205,7 +197,7 @@ export const getUserScore = async (userId) => {
   }
 };
 
-// Fonction pour mettre à jour le nom d'utilisateur
+// Fonction pour mettre à jour le nom d'utilisateur (via Cloud Function)
 export const updateUsername = async (newUsername) => {
   if (!isFirebaseInitialized || !auth.currentUser) {
     console.warn("Firebase n'est pas initialisé ou utilisateur non connecté");
@@ -213,68 +205,20 @@ export const updateUsername = async (newUsername) => {
   }
 
   try {
-    const userId = auth.currentUser.uid;
-    // Vérifier si l'utilisateur a déjà un document de score
-    const userScoreRef = doc(db, 'scores', userId);
-    const userScoreDoc = await getDoc(userScoreRef);
+    const fn = httpsCallable(functions, 'updateUsername');
+    await fn({ newUsername });
 
-    // Vérifier la date du dernier changement de nom d'utilisateur
-    if (userScoreDoc.exists() && userScoreDoc.data().lastUsernameChange) {
-      const lastChange = userScoreDoc.data().lastUsernameChange.toDate();
-      const now = new Date();
-      const diffTime = Math.abs(now - lastChange);
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-      if (diffDays < 30) {
-        return {
-          success: false,
-          error: `Vous ne pouvez modifier votre nom qu'une fois tous les 30 jours. Prochain changement possible dans ${
-            30 - diffDays
-          } jour(s).`,
-        };
-      }
-    }
-
-    // Mettre à jour le profil de l'utilisateur
-    await updateProfile(auth.currentUser, {
-      displayName: newUsername,
-    });
-
-    // Mettre à jour le document de score si l'utilisateur en a un
-    const updateData = {
-      username: newUsername,
-      lastUsernameChange: new Date(),
-    };
-
-    if (userScoreDoc.exists()) {
-      // Mise à jour d'un document existant
-      await setDoc(
-        userScoreRef,
-        {
-          ...userScoreDoc.data(),
-          ...updateData,
-        },
-        { merge: true }
-      );
-    } else {
-      // Création d'un nouveau document si aucun score n'existe encore
-      await setDoc(userScoreRef, {
-        userId,
-        photoURL: auth.currentUser.photoURL,
-        score: 0,
-        seed: 0,
-        timestamp: new Date(),
-        ...updateData,
-      });
-    }
+    // Rafraîchir le profil local (le displayName vient d'être mis à jour côté serveur)
+    await auth.currentUser.reload();
 
     return { success: true };
   } catch (error) {
     console.error("Erreur lors de la mise à jour du nom d'utilisateur:", error);
-    return {
-      success: false,
-      error: "Erreur lors de la mise à jour du nom d'utilisateur",
-    };
+    const message =
+      error.code === 'functions/resource-exhausted'
+        ? error.message
+        : "Erreur lors de la mise à jour du nom d'utilisateur";
+    return { success: false, error: message };
   }
 };
 

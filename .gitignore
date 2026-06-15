@@ -1,5 +1,7 @@
 # Dependency directories
 node_modules/
+functions/node_modules/
+functions/vroom-vroom-2-5d-firebase-adminsdk-fbsvc-15284ae042.json
 .pnp/
 .pnp.js
 
@@ -41,6 +43,9 @@ Thumbs.db
 *.njsproj
 *.sln
 *.sw?
+
+# Backend Express
+server/node_modules/
 
 # Claude
 CLAUDE.md

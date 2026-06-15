@@ -7,6 +7,7 @@ import Vehicle from './Vehicle';
 import Terrain from './Terrain';
 import Camera from './Camera';
 import Controls from './Controls';
+import { audioManager } from '../audio/AudioManager';
 
 // Post-processing
 import { OutlineEffect } from 'three/examples/jsm/effects/OutlineEffect.js';
@@ -56,6 +57,7 @@ export default class Game {
 
     // Callbacks définis par App.jsx
     this.onScoreUpdated = null;
+    this.onGameOver = null;
     this.onPause = null;
     this.onReturnToMenu = null;
 
@@ -83,6 +85,7 @@ export default class Game {
     this.fpsTime = 0;
     this.fps = 0;
     this.fpsDisplay = null;
+    this.showFps = localStorage.getItem('showFps') !== 'false';
 
     // Rendre l'instance de jeu accessible globalement pour les contrôles
     window.gameInstance = this;
@@ -764,6 +767,7 @@ export default class Game {
       // Mise à jour des éléments visuels
       if (this.vehicle) {
         this.vehicle.update();
+        this.vehicle.stabilize();
 
         // Vérifier si le véhicule est sorti des limites ou retourné
         if (this.vehicle.getChassisBody()) {
@@ -776,6 +780,9 @@ export default class Game {
         // Mise à jour des statistiques du jeu
         this.updateStatsDisplay();
         this.updateScore();
+
+        const speedKmh = this.vehicle.getSpeedKmh();
+        audioManager.setEngineSpeed(Math.min(speedKmh / 100, 1));
       }
 
       if (this.terrain) {
@@ -815,7 +822,7 @@ export default class Game {
       }
 
       // Affichage des FPS si activé
-      if (DEBUG.SHOW_FPS) {
+      if (this.showFps) {
         this.frameCount++;
         this.fpsTime += deltaTime;
 
@@ -834,6 +841,8 @@ export default class Game {
           this.fpsDisplay.textContent = `FPS: ${this.fps}`;
         }
       }
+    } else {
+      audioManager.setEngineSpeed(0);
     }
 
     // Toujours effectuer le rendu de la scène, même si le jeu n'est pas en cours
@@ -1456,8 +1465,8 @@ export default class Game {
       this.upsideDownTime = this.upsideDownTime || 0;
       this.upsideDownTime += deltaTime;
 
-      // Si le véhicule est sur le toit pendant plus de 2 secondes, game over
-      if (this.upsideDownTime > 2) {
+      // Si le véhicule est sur le toit pendant plus de 0.5 secondes, game over
+      if (this.upsideDownTime > 0.5) {
         this.showGameOver('VÉHICULE RETOURNÉ !');
         this.upsideDownTime = 0;
       }
@@ -1477,7 +1486,7 @@ export default class Game {
     const carUpVector = new CANNON.Vec3();
     carBody.vectorToWorldFrame(upVector, carUpVector);
 
-    return carUpVector.y < -0.7;
+    return carUpVector.y < -0.9;
   }
 
   // Afficher l'écran de fin de jeu
@@ -1588,6 +1597,11 @@ export default class Game {
 
     // Ajouter l'écran au document
     document.body.appendChild(gameOverScreen);
+
+    // Notifier l'extérieur avec le score final
+    if (typeof this.onGameOver === 'function') {
+      this.onGameOver(this.gameStats.score, this.currentSeed);
+    }
   }
 
   // Fonction pour créer un matériau cartoon

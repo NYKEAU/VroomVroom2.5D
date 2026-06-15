@@ -105,9 +105,29 @@ const Leaderboard = ({ onSelectSeed }) => {
     return <div className="leaderboard-error">{error}</div>;
   }
 
+  const bolts = [{top:-7,left:-7},{top:-7,right:-7},{bottom:-7,left:-7},{bottom:-7,right:-7}];
+
   return (
+    <div className="card-frame">
+    {bolts.map((pos, i) => (
+      <svg key={i} aria-hidden="true" style={{position:'absolute',width:14,height:14,pointerEvents:'none',zIndex:12,...pos}} viewBox="0 0 14 14">
+        <circle cx="7" cy="7" r="6" fill="#5a5a5a" stroke="#222" strokeWidth="1.5"/>
+        <circle cx="7" cy="7" r="4" fill="url(#boltGrad)"/>
+        <defs>
+          <radialGradient id="boltGrad" cx="35%" cy="35%">
+            <stop offset="0%" stopColor="#888"/>
+            <stop offset="100%" stopColor="#444"/>
+          </radialGradient>
+        </defs>
+        <line x1="4" y1="7" x2="10" y2="7" stroke="#222" strokeWidth="1.5"/>
+        <line x1="7" y1="4" x2="7" y2="10" stroke="#222" strokeWidth="1.5"/>
+      </svg>
+    ))}
     <div className={`leaderboard-container ${fadeIn ? 'fade-in' : ''}`}>
+      <div className="leaderboard-rail" />
+      <div className="leaderboard-body">
       <h2 className="leaderboard-title">Classement</h2>
+      <div className="leaderboard-scroll">
 
       {userScore && (
         <div className="user-score">
@@ -137,7 +157,7 @@ const Leaderboard = ({ onSelectSeed }) => {
             >
               <span className="seed-label">SEED {userScore.seed}</span>
               <span className="seed-copy-indicator">
-                {copiedSeed === userScore.seed ? '✅ Copié !' : '📋 Jouer cette seed'}
+                {copiedSeed === userScore.seed ? '✅ Copié !' : '🏁 Lancer'}
               </span>
             </button>
           </div>
@@ -186,7 +206,7 @@ const Leaderboard = ({ onSelectSeed }) => {
                 >
                   <span className="seed-label">SEED {score.seed}</span>
                   <span className="seed-copy-indicator">
-                    {copiedSeed === score.seed ? '✅ Copié !' : '📋 Jouer cette seed'}
+                    {copiedSeed === score.seed ? '✅ Copié !' : '🏁 Lancer'}
                   </span>
                 </button>
               </div>
@@ -194,6 +214,36 @@ const Leaderboard = ({ onSelectSeed }) => {
           </div>
         )}
       </div>
+      </div>{/* /leaderboard-scroll */}
+      </div>{/* /leaderboard-body */}
+
+      {/* Gouttière à marqueurs */}
+      <svg aria-hidden="true" className="whiteboard-tray" viewBox="0 0 450 34" preserveAspectRatio="none">
+        {/* Fond de gouttière — métal sombre */}
+        <rect x="0" y="7" width="450" height="27" fill="#252525"/>
+        {/* Bord supérieur en relief */}
+        <rect x="0" y="5" width="450" height="6" fill="#3c3c3c"/>
+        <rect x="0" y="5" width="450" height="1.5" fill="rgba(255,255,255,0.18)"/>
+        {/* Marqueur noir */}
+        <rect x="28" y="11" width="64" height="11" rx="2" fill="#1e1e1e"/>
+        <rect x="28" y="11" width="9" height="11" rx="1" fill="#404040"/>
+        <rect x="88" y="12" width="6" height="9" rx="2" fill="#141414"/>
+        {/* Marqueur rouge */}
+        <rect x="118" y="11" width="60" height="11" rx="2" fill="#c01818"/>
+        <rect x="118" y="11" width="9" height="11" rx="1" fill="#e02020"/>
+        <rect x="174" y="12" width="6" height="9" rx="2" fill="#9a1010"/>
+        {/* Marqueur bleu */}
+        <rect x="200" y="11" width="56" height="11" rx="2" fill="#1840b8"/>
+        <rect x="200" y="11" width="9" height="11" rx="1" fill="#2050cc"/>
+        <rect x="252" y="12" width="6" height="9" rx="2" fill="#102ea0"/>
+        {/* Effaceur */}
+        <rect x="338" y="9" width="76" height="15" rx="2" fill="#dedad2"/>
+        <rect x="338" y="9" width="76" height="3" rx="1" fill="#c8c4bc"/>
+        <rect x="338" y="9" width="6" height="15" rx="1" fill="#b0ada8"/>
+        {/* Ombre portée sous le bord */}
+        <rect x="0" y="7" width="450" height="2" fill="rgba(0,0,0,0.35)"/>
+      </svg>
+    </div>
     </div>
   );
 };

@@ -1,0 +1,22 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Scores ───────────────────────────────────────────────────────────────
+    // Lecture publique (classement visible par tous).
+    // Écriture INTERDITE aux clients : seules les Cloud Functions (Admin SDK)
+    // peuvent écrire dans cette collection (submitScore, updateUsername).
+    match /scores/{userId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // ── Sessions ─────────────────────────────────────────────────────────────
+    // Créées et supprimées exclusivement par les Cloud Functions (Admin SDK).
+    // Les clients ne doivent jamais lire ni écrire directement dans /sessions/.
+    match /sessions/{token} {
+      allow read, write: if false;
+    }
+
+  }
+}

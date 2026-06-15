@@ -115,144 +115,147 @@ export default class Vehicle {
   }
 
   setupVisuals() {
-    // Création d'un groupe pour le chassis de la voiture télécommandée
+    // ─── CHASSIS ──────────────────────────────────────────────────────────────
     const chassisGroup = new THREE.Group();
     this.scene.add(chassisGroup);
 
-    // Base du chassis (plateforme principale)
-    const baseGeometry = new THREE.BoxGeometry(3, 0.2, 2.8);
-    const baseMaterial = new THREE.MeshStandardMaterial({
-      color: 0x333333, // Gris foncé pour le châssis
-      roughness: 0.5,
-      metalness: 0.3,
-    });
-    const baseMesh = new THREE.Mesh(baseGeometry, baseMaterial);
-    baseMesh.position.set(0.3, -0.2, 0);
-    baseMesh.castShadow = true;
-    baseMesh.receiveShadow = true;
-    chassisGroup.add(baseMesh);
+    const redMat = new THREE.MeshStandardMaterial({ color: 0xff2d20, roughness: 0.3, metalness: 0.4 });
+    const darkMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.7, metalness: 0.5 });
 
-    // Carrosserie principale (corps de la RC car)
-    const bodyGeometry = new THREE.BoxGeometry(2.6, 0.4, 2.4);
-    const bodyMaterial = new THREE.MeshStandardMaterial({
-      color: 0xff3300, // Rouge vif typique des RC cars
-      roughness: 0.3,
-      metalness: 0.5,
-    });
-    const bodyMesh = new THREE.Mesh(bodyGeometry, bodyMaterial);
-    bodyMesh.position.set(0.3, 0.1, 0);
+    // 1. Skid plate (plaque de base noire)
+    const skidMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(3.2, 0.15, 2.4),
+      new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.8, metalness: 0.2 })
+    );
+    skidMesh.position.set(0, 0, 0);
+    skidMesh.castShadow = true;
+    skidMesh.receiveShadow = true;
+    chassisGroup.add(skidMesh);
+
+    // 2. Corps principal
+    const bodyMesh = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.5, 2.2), redMat);
+    bodyMesh.position.set(0.1, 0.45, 0);
     bodyMesh.castShadow = true;
     bodyMesh.receiveShadow = true;
     chassisGroup.add(bodyMesh);
 
-    // Cockpit/capot avant incliné
-    const cockpitGeometry = new THREE.BoxGeometry(1.2, 0.3, 2);
-    const cockpitMaterial = new THREE.MeshStandardMaterial({
-      color: 0xff3300, // Même couleur que le corps
-      roughness: 0.3,
-      metalness: 0.5,
-    });
-    const cockpitMesh = new THREE.Mesh(cockpitGeometry, cockpitMaterial);
-    cockpitMesh.position.set(1.2, 0.2, 0);
-    cockpitMesh.rotation.z = -Math.PI * 0.1; // Légère inclinaison pour l'aérodynamisme
-    cockpitMesh.castShadow = true;
-    cockpitMesh.receiveShadow = true;
-    chassisGroup.add(cockpitMesh);
+    // 3. Capot avant incliné
+    const hoodMesh = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.35, 1.8), redMat);
+    hoodMesh.position.set(1.1, 0.55, 0);
+    hoodMesh.rotation.z = -0.15;
+    hoodMesh.castShadow = true;
+    hoodMesh.receiveShadow = true;
+    chassisGroup.add(hoodMesh);
 
-    // Pare-chocs avant
-    const frontBumperGeometry = new THREE.BoxGeometry(0.3, 0.3, 2.6);
-    const bumperMaterial = new THREE.MeshStandardMaterial({
-      color: 0x222222, // Noir pour les pare-chocs
-      roughness: 0.7,
-      metalness: 0.2,
-    });
-    const frontBumperMesh = new THREE.Mesh(frontBumperGeometry, bumperMaterial);
-    frontBumperMesh.position.set(1.8, -0.1, 0);
-    frontBumperMesh.castShadow = true;
-    frontBumperMesh.receiveShadow = true;
-    chassisGroup.add(frontBumperMesh);
+    // 4. Roll cage — deux montants verticaux + barre de toit
+    const pillarGeo = new THREE.CylinderGeometry(0.04, 0.04, 0.6, 6);
+    const pillarL = new THREE.Mesh(pillarGeo, darkMat);
+    pillarL.position.set(-0.3, 0.75, 0.7);
+    pillarL.castShadow = true;
+    chassisGroup.add(pillarL);
 
-    // Pare-chocs arrière
-    const rearBumperGeometry = new THREE.BoxGeometry(0.3, 0.3, 2.6);
-    const rearBumperMesh = new THREE.Mesh(rearBumperGeometry, bumperMaterial);
-    rearBumperMesh.position.set(-1.2, -0.1, 0);
-    rearBumperMesh.castShadow = true;
-    rearBumperMesh.receiveShadow = true;
-    chassisGroup.add(rearBumperMesh);
+    const pillarR = new THREE.Mesh(pillarGeo, darkMat);
+    pillarR.position.set(-0.3, 0.75, -0.7);
+    pillarR.castShadow = true;
+    chassisGroup.add(pillarR);
 
-    // Aileron arrière (élément caractéristique des RC cars)
-    const spoilerGeometry = new THREE.BoxGeometry(0.5, 0.1, 2.2);
-    const spoilerMaterial = new THREE.MeshStandardMaterial({
-      color: 0x000000, // Noir pour l'aileron
-      roughness: 0.5,
-      metalness: 0.3,
-    });
-    const spoilerMesh = new THREE.Mesh(spoilerGeometry, spoilerMaterial);
-    spoilerMesh.position.set(-1.1, 0.4, 0);
-    spoilerMesh.castShadow = true;
-    spoilerMesh.receiveShadow = true;
-    chassisGroup.add(spoilerMesh);
+    const roofBar = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.05, 1.2), darkMat);
+    roofBar.position.set(-0.3, 1.15, 0);
+    roofBar.castShadow = true;
+    chassisGroup.add(roofBar);
 
-    // Supports d'aileron (2 montants)
-    const supportGeometry = new THREE.BoxGeometry(0.1, 0.3, 0.1);
-    const supportMaterial = new THREE.MeshStandardMaterial({
-      color: 0x000000,
-      roughness: 0.5,
-      metalness: 0.3,
-    });
+    // 5. Pare-chocs avant (bull bar) + renforts diagonaux
+    const bullBar = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.5, 2.2), darkMat);
+    bullBar.position.set(1.65, 0.3, 0);
+    bullBar.castShadow = true;
+    bullBar.receiveShadow = true;
+    chassisGroup.add(bullBar);
 
-    const supportLeft = new THREE.Mesh(supportGeometry, supportMaterial);
-    supportLeft.position.set(-1.1, 0.2, 0.8);
-    chassisGroup.add(supportLeft);
+    for (const side of [0.7, -0.7]) {
+      const brace = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.08, 0.08), darkMat);
+      brace.position.set(1.65, 0.3, side);
+      brace.rotation.z = 0.4;
+      brace.castShadow = true;
+      chassisGroup.add(brace);
+    }
 
-    const supportRight = new THREE.Mesh(supportGeometry, supportMaterial);
-    supportRight.position.set(-1.1, 0.2, -0.8);
-    chassisGroup.add(supportRight);
+    // 6. Aileron arrière — plaque + deux supports cylindriques
+    const wing = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.08, 2.0), redMat);
+    wing.position.set(-1.4, 1.1, 0);
+    wing.castShadow = true;
+    chassisGroup.add(wing);
 
-    // Antenne (élément typique des RC cars)
-    const antennaGeometry = new THREE.CylinderGeometry(0.02, 0.02, 1.2, 4);
-    const antennaMaterial = new THREE.MeshStandardMaterial({
-      color: 0x111111,
-      roughness: 0.5,
-      metalness: 0.7,
-    });
-    const antennaMesh = new THREE.Mesh(antennaGeometry, antennaMaterial);
-    antennaMesh.position.set(0, 0.8, 0);
-    antennaMesh.rotation.x = Math.PI * 0.1; // Légèrement inclinée vers l'arrière
+    const wingSupportGeo = new THREE.CylinderGeometry(0.05, 0.05, 0.5, 6);
+    for (const side of [0.7, -0.7]) {
+      const ws = new THREE.Mesh(wingSupportGeo, darkMat);
+      ws.position.set(-1.4, 0.85, side);
+      ws.castShadow = true;
+      chassisGroup.add(ws);
+    }
+
+    // 7. Antenne
+    const antennaMesh = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.025, 0.025, 1.4, 4),
+      new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.5, metalness: 0.7 })
+    );
+    antennaMesh.position.set(-0.8, 1.4, 0.6);
+    antennaMesh.rotation.x = 0.15;
+    antennaMesh.castShadow = true;
     chassisGroup.add(antennaMesh);
 
-    // Assigner le groupe comme chassis pour le véhicule
+    chassisGroup.traverse((obj) => {
+      if (obj.isMesh) obj.material.userData.outlineParameters = { visible: false };
+    });
     this.meshes.chassis = chassisGroup;
 
-    // Roues avec un aspect plus détaillé - INCHANGÉ comme demandé
+    // ─── ROUES ────────────────────────────────────────────────────────────────
+    const cramponGeo = new THREE.BoxGeometry(0.05, 0.18, 0.65);
+    const cramponMat = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.9 });
+
     for (let i = 0; i < 4; i++) {
-      // Groupe pour contenir la roue et ses détails
       const wheelGroup = new THREE.Group();
 
-      // Pneu principal
-      const sphereGeometry = new THREE.SphereGeometry(0.8);
-      const sphereMaterial = new THREE.MeshStandardMaterial({
-        color: 0x222222,
-        roughness: 0.9,
-        metalness: 0.1,
-      });
-      const sphereMesh = new THREE.Mesh(sphereGeometry, sphereMaterial);
-      sphereMesh.castShadow = true;
-      sphereMesh.receiveShadow = true;
-      wheelGroup.add(sphereMesh);
+      // 1. Pneu principal
+      const tireMesh = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.9, 0.9, 0.65, 12),
+        new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.9, metalness: 0.05 })
+      );
+      tireMesh.rotation.x = Math.PI / 2;
+      tireMesh.castShadow = true;
+      tireMesh.receiveShadow = true;
+      wheelGroup.add(tireMesh);
 
-      // Jante (un peu plus petite)
-      const hubGeometry = new THREE.CylinderGeometry(0.4, 0.4, 0.3, 8);
-      const hubMaterial = new THREE.MeshStandardMaterial({
-        color: 0xcccccc,
-        roughness: 0.2,
-        metalness: 0.8,
-      });
-      const hubMesh = new THREE.Mesh(hubGeometry, hubMaterial);
-      hubMesh.rotation.x = Math.PI / 2; // Orienter correctement
+      // Crampons — 4 répartis à 90° d'intervalle en couronne
+      for (let c = 0; c < 4; c++) {
+        const angle = c * (Math.PI / 2);
+        const crampon = new THREE.Mesh(cramponGeo, cramponMat);
+        crampon.position.set(0.9 * Math.cos(angle), 0.9 * Math.sin(angle), 0);
+        crampon.rotation.z = angle;
+        crampon.castShadow = true;
+        wheelGroup.add(crampon);
+      }
+
+      // 2. Jante centrale
+      const rimMesh = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.45, 0.45, 0.68, 8),
+        new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.2, metalness: 0.8 })
+      );
+      rimMesh.rotation.x = Math.PI / 2;
+      rimMesh.castShadow = true;
+      wheelGroup.add(rimMesh);
+
+      // 3. Centre de jante (moyeu rouge)
+      const hubMesh = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.22, 0.22, 0.7, 6),
+        new THREE.MeshStandardMaterial({ color: 0xff2d20, roughness: 0.4, metalness: 0.5 })
+      );
+      hubMesh.rotation.x = Math.PI / 2;
       hubMesh.castShadow = true;
       wheelGroup.add(hubMesh);
 
+      wheelGroup.traverse((obj) => {
+        if (obj.isMesh) obj.material.userData.outlineParameters = { visible: false };
+      });
       this.scene.add(wheelGroup);
       this.meshes.wheels.push(wheelGroup);
     }
@@ -270,7 +273,7 @@ export default class Vehicle {
         const wheelAngularSpeed = Math.abs(
           this.wheelBodies[i].angularVelocity.z
         );
-        if (force > 0 && wheelAngularSpeed >= this.maxWheelAngularVelocity) {
+        if (wheelAngularSpeed >= this.maxWheelAngularVelocity) {
           this.vehicle.setWheelForce(0, i);
         } else {
           this.vehicle.setWheelForce(force, i);

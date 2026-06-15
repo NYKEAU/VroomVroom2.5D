@@ -1,4 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   auth,
   signInWithGoogle,
@@ -19,6 +20,7 @@ const AuthContainer = () => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showFps, setShowFps] = useState(() => localStorage.getItem('showFps') !== 'false');
   const [newUsername, setNewUsername] = useState('');
   const [usernameError, setUsernameError] = useState('');
   const [updateLoading, setUpdateLoading] = useState(false);
@@ -264,7 +266,7 @@ const AuthContainer = () => {
             </button>
           </div>
 
-          {showSettings && (
+          {showSettings && createPortal(
             <div className="settings-overlay">
               <div className="settings-card" ref={popupRef}>
                 <h3 className="settings-title">Paramètres</h3>
@@ -296,6 +298,20 @@ const AuthContainer = () => {
                   fois tous les 30 jours.
                 </div>
 
+                <div className="fps-toggle-row">
+                  <label className="fps-toggle-label">
+                    <input
+                      type="checkbox"
+                      checked={showFps}
+                      onChange={(e) => {
+                        setShowFps(e.target.checked);
+                        localStorage.setItem('showFps', e.target.checked);
+                      }}
+                    />
+                    Afficher le compteur FPS
+                  </label>
+                </div>
+
                 {usernameError && (
                   <p className="error-message">{usernameError}</p>
                 )}
@@ -324,7 +340,7 @@ const AuthContainer = () => {
                 </button>
               </div>
             </div>
-          )}
+          , document.body)}
         </>
       ) : (
         <>
@@ -332,7 +348,7 @@ const AuthContainer = () => {
             Connexion / Inscription
           </button>
 
-          {showAuthModal && (
+          {showAuthModal && createPortal(
             <div
               className="settings-overlay"
               onClick={(e) => { if (e.target === e.currentTarget) setShowAuthModal(false); }}
@@ -465,7 +481,7 @@ const AuthContainer = () => {
                 </button>
               </div>
             </div>
-          )}
+          , document.body)}
         </>
       )}
     </div>
