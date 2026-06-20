@@ -19,7 +19,7 @@ const MIN_ELAPSED_SECONDS = 10;
 
 // ─── generateSessionToken ────────────────────────────────────────────────────
 // Appelée au démarrage d'une partie. Crée un document /sessions/{token}.
-exports.generateSessionToken = onCall({ region: 'europe-west1', cors: 'https://vv25d.nykeau.fr' }, async (request) => {
+exports.generateSessionToken = onCall({ region: 'europe-west1', cors: 'https://vv25d.nykeau.fr', invoker: 'public' }, async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'Authentification requise.');
   }
@@ -38,7 +38,7 @@ exports.generateSessionToken = onCall({ region: 'europe-west1', cors: 'https://v
 
 // ─── submitScore ─────────────────────────────────────────────────────────────
 // Appelée à la fin de partie. Valide le token et enregistre le score si meilleur.
-exports.submitScore = onCall({ region: 'europe-west1', cors: 'https://vv25d.nykeau.fr' }, async (request) => {
+exports.submitScore = onCall({ region: 'europe-west1', cors: 'https://vv25d.nykeau.fr', invoker: 'public' }, async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'Authentification requise.');
   }
@@ -136,7 +136,7 @@ exports.submitScore = onCall({ region: 'europe-west1', cors: 'https://vv25d.nyke
 // ─── updateUsername ───────────────────────────────────────────────────────────
 // Remplace l'écriture directe client→Firestore pour les changements de pseudo.
 // Respecte la limite de 30 jours côté serveur.
-exports.updateUsername = onCall({ region: 'europe-west1', cors: 'https://vv25d.nykeau.fr' }, async (request) => {
+exports.updateUsername = onCall({ region: 'europe-west1', cors: 'https://vv25d.nykeau.fr', invoker: 'public' }, async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'Authentification requise.');
   }
